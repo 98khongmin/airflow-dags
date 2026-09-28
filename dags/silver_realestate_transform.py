@@ -12,8 +12,10 @@ try:
 except ImportError:
     from airflow.models.baseoperator import BaseOperator
     class SparkSubmitOperator(BaseOperator):
-        def __init__(self, *args, **kwargs):
-            task_id = kwargs.pop('task_id', 'spark_task')
+        def __init__(self, task_id='spark_task', *args, **kwargs):
+            # BaseOperator가 알지 못하는 Spark 인자들을 전부 안전하게 제거
+            for spark_param in ['application', 'name', 'conn_id', 'conf', 'packages', 'verbose', 'files', 'py_files', 'archives']:
+                kwargs.pop(spark_param, None)
             super().__init__(task_id=task_id, **kwargs)
         def execute(self, context):
             pass

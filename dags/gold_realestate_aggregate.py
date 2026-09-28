@@ -13,13 +13,14 @@ try:
 except ImportError:
     from airflow.models.baseoperator import BaseOperator
     class SparkSubmitOperator(BaseOperator):
-        def __init__(self, *args, **kwargs):
-            task_id = kwargs.pop('task_id', 'spark_task')
+        def __init__(self, task_id='spark_task', *args, **kwargs):
+            for spark_param in ['application', 'name', 'conn_id', 'conf', 'packages', 'verbose', 'files', 'py_files', 'archives']:
+                kwargs.pop(spark_param, None)
             super().__init__(task_id=task_id, **kwargs)
         def execute(self, context):
             pass
 
-# PostgresHook 미설치 환경 대비 Fallback
+# PostgresHook 미설치 대비 fallback
 try:
     from airflow.providers.postgres.hooks.postgres import PostgresHook
 except ImportError:
