@@ -13,14 +13,13 @@ except ImportError:
     from airflow.models.baseoperator import BaseOperator
     class SparkSubmitOperator(BaseOperator):
         def __init__(self, task_id='spark_task', *args, **kwargs):
-            # BaseOperator가 알지 못하는 Spark 인자들을 전부 안전하게 제거
-            for spark_param in ['application', 'name', 'conn_id', 'conf', 'packages', 'verbose', 'files', 'py_files', 'archives']:
+            for spark_param in ['application', 'name', 'conn_id', 'conf', 'packages', 'jars', 'verbose', 'files', 'py_files', 'archives']:
                 kwargs.pop(spark_param, None)
             super().__init__(task_id=task_id, **kwargs)
         def execute(self, context):
             pass
 
-# JAVA_HOME 강제 설정
+# JAVA_HOME 설정
 if "JAVA_HOME" not in os.environ:
     os.environ["JAVA_HOME"] = "/opt/java/openjdk"
 if "/opt/java/openjdk/bin" not in os.environ.get("PATH", ""):
@@ -34,13 +33,18 @@ default_args = {
     'retry_delay': timedelta(minutes=5),
 }
 
-# 기본 Spark, 직렬화(Kryo), 드라이버 메모리 및 S3A 설정
+# 기본 Spark, 직렬화(Kryo), 드라이버 메모리, 패키지 및 S3A 설정
 spark_conf = {
     'spark.master': 'spark://spark-master:7077',
     'spark.serializer': 'org.apache.spark.serializer.KryoSerializer',
     'spark.kryoserializer.buffer.max': '512m',
     'spark.kryoserializer.buffer': '64m',
     'spark.driver.maxResultSize': '2g',
+    # [수정] packages 인자 대신 spark.jars.packages 설정 사용
+    'spark.jars.packages': (
+        'org.apache.hadoop:hadoop-aws:3.4.0,'
+        'com.amazonaws:aws-java-sdk-bundle:1.12.720'
+    ),
     # S3A 설정
     'spark.hadoop.fs.s3a.impl': 'org.apache.hadoop.fs.s3a.S3AFileSystem',
     'spark.hadoop.fs.s3a.aws.credentials.provider': 'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider',
@@ -82,16 +86,13 @@ with DAG(
         mode='reschedule'
     )
 
+    # [수정] packages 파라미터 삭제
     spark_transform_task = SparkSubmitOperator(
         task_id='spark_transform_silver',
         application='/opt/airflow/scripts/q2/silver_spark.py',
         name='silver_realestate_transform',
         conn_id='spark_default',
         conf=spark_conf,
-        packages=(
-            'org.apache.hadoop:hadoop-aws:3.4.0,'
-            'com.amazonaws:aws-java-sdk-bundle:1.12.720'
-        ),
         verbose=True
     )
 
