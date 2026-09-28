@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from airflow import DAG
 # Airflow 3 권장 경로로 변경
-from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
+from airflow.sensors.external_task import ExternalTaskSensor
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from airflow.sdk.bases.hook import BaseHook
 

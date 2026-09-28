@@ -4,9 +4,9 @@ import sys
 
 from airflow import DAG
 # Airflow 3 호환 권장 import 경로로 변경
-from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
+from airflow.sensors.external_task import ExternalTaskSensor
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-from airflow.providers.standard.operators.python import PythonOperator
+from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.sdk.bases.hook import BaseHook
 
