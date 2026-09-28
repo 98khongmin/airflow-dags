@@ -3,15 +3,20 @@ import os
 import sys
 
 from airflow import DAG
-# Airflow 2.x 표준 내장 센서 및 훅
 from airflow.sensors.external_task import ExternalTaskSensor
 from airflow.hooks.base import BaseHook
 
-# SparkSubmitOperator fallback 처리 (미설치 환경에서 DAG Import Error 방지)
+# Spark 미설치 환경에서도 DAG 파싱 및 인자 인식을 지원하는 Fallback Operator
 try:
     from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 except ImportError:
-    from airflow.operators.empty import EmptyOperator as SparkSubmitOperator
+    from airflow.models.baseoperator import BaseOperator
+    class SparkSubmitOperator(BaseOperator):
+        def __init__(self, *args, **kwargs):
+            task_id = kwargs.pop('task_id', 'spark_task')
+            super().__init__(task_id=task_id, **kwargs)
+        def execute(self, context):
+            pass
 
 # JAVA_HOME 강제 설정
 if "JAVA_HOME" not in os.environ:
