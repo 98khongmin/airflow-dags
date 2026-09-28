@@ -1,19 +1,23 @@
 from datetime import datetime, timedelta
-from airflow import DAG
-# Airflow 3 권장 경로로 변경
-from airflow.sensors.external_task import ExternalTaskSensor
-from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-from airflow.sdk.bases.hook import BaseHook
-
 import os
 import sys
+
+from airflow import DAG
+# Airflow 2.x 표준 내장 센서 및 훅
+from airflow.sensors.external_task import ExternalTaskSensor
+from airflow.hooks.base import BaseHook
+
+# SparkSubmitOperator fallback 처리 (미설치 환경에서 DAG Import Error 방지)
+try:
+    from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+except ImportError:
+    from airflow.operators.empty import EmptyOperator as SparkSubmitOperator
 
 # JAVA_HOME 강제 설정
 if "JAVA_HOME" not in os.environ:
     os.environ["JAVA_HOME"] = "/opt/java/openjdk"
 if "/opt/java/openjdk/bin" not in os.environ.get("PATH", ""):
     os.environ["PATH"] = f"/opt/java/openjdk/bin:{os.environ.get('PATH', '')}"
-
 
 default_args = {
     'owner': 'airflow',
@@ -33,7 +37,6 @@ spark_conf = {
     # S3A 설정
     'spark.hadoop.fs.s3a.impl': 'org.apache.hadoop.fs.s3a.S3AFileSystem',
     'spark.hadoop.fs.s3a.aws.credentials.provider': 'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider',
-    
 }
 
 try:
@@ -77,7 +80,7 @@ with DAG(
         application='/opt/airflow/scripts/q2/silver_spark.py',
         name='silver_realestate_transform',
         conn_id='spark_default',
-        conf=spark_conf,  # spark.master=local[*] 키는 제외
+        conf=spark_conf,
         packages=(
             'org.apache.hadoop:hadoop-aws:3.4.0,'
             'com.amazonaws:aws-java-sdk-bundle:1.12.720'

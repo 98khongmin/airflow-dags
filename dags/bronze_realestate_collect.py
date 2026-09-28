@@ -7,7 +7,7 @@ from airflow import DAG
 from airflow.models import Variable
 from airflow.utils.task_group import TaskGroup
 from airflow.operators.empty import EmptyOperator
-from airflow.providers.standard.operators.python import (
+from airflow.operators.python import (
     BranchPythonOperator,
     PythonOperator,
 )
