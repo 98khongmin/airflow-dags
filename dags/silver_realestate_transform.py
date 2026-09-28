@@ -1,29 +1,25 @@
 from datetime import datetime, timedelta
+from airflow import DAG
+# Airflow 3 권장 경로로 변경
+# from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
+
+from airflow.sensors.external_task import ExternalTaskSensor
+try:
+    from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+except Exception as e:
+    pass
+
+from airflow.sdk.bases.hook import BaseHook
+
 import os
 import sys
 
-from airflow import DAG
-from airflow.sensors.external_task import ExternalTaskSensor
-from airflow.hooks.base import BaseHook
-
-# Spark 미설치 환경에서도 DAG 파싱 및 인자 인식을 지원하는 Fallback Operator
-try:
-    from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-except ImportError:
-    from airflow.models.baseoperator import BaseOperator
-    class SparkSubmitOperator(BaseOperator):
-        def __init__(self, task_id='spark_task', *args, **kwargs):
-            for spark_param in ['application', 'name', 'conn_id', 'conf', 'packages', 'jars', 'verbose', 'files', 'py_files', 'archives']:
-                kwargs.pop(spark_param, None)
-            super().__init__(task_id=task_id, **kwargs)
-        def execute(self, context):
-            pass
-
-# JAVA_HOME 설정
+# JAVA_HOME 강제 설정
 if "JAVA_HOME" not in os.environ:
     os.environ["JAVA_HOME"] = "/opt/java/openjdk"
 if "/opt/java/openjdk/bin" not in os.environ.get("PATH", ""):
     os.environ["PATH"] = f"/opt/java/openjdk/bin:{os.environ.get('PATH', '')}"
+
 
 default_args = {
     'owner': 'airflow',
@@ -33,21 +29,17 @@ default_args = {
     'retry_delay': timedelta(minutes=5),
 }
 
-# 기본 Spark, 직렬화(Kryo), 드라이버 메모리, 패키지 및 S3A 설정
+# 기본 Spark, 직렬화(Kryo), 드라이버 메모리 및 S3A 설정
 spark_conf = {
     'spark.master': 'spark://spark-master:7077',
     'spark.serializer': 'org.apache.spark.serializer.KryoSerializer',
     'spark.kryoserializer.buffer.max': '512m',
     'spark.kryoserializer.buffer': '64m',
     'spark.driver.maxResultSize': '2g',
-    # [수정] packages 인자 대신 spark.jars.packages 설정 사용
-    'spark.jars.packages': (
-        'org.apache.hadoop:hadoop-aws:3.4.0,'
-        'com.amazonaws:aws-java-sdk-bundle:1.12.720'
-    ),
     # S3A 설정
     'spark.hadoop.fs.s3a.impl': 'org.apache.hadoop.fs.s3a.S3AFileSystem',
     'spark.hadoop.fs.s3a.aws.credentials.provider': 'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider',
+    
 }
 
 try:
@@ -73,6 +65,7 @@ with DAG(
     start_date=datetime(2024, 12, 1),
     end_date=datetime(2025, 1, 1),
     catchup=True,
+    max_active_runs=1,
     tags=['silver', 'realestate'],
 ) as dag:
 
@@ -86,14 +79,19 @@ with DAG(
         mode='reschedule'
     )
 
-    # [수정] packages 파라미터 삭제
     spark_transform_task = SparkSubmitOperator(
         task_id='spark_transform_silver',
         application='/opt/airflow/scripts/q2/silver_spark.py',
         name='silver_realestate_transform',
         conn_id='spark_default',
-        conf=spark_conf,
-        verbose=True
+        conf=spark_conf,  # spark.master=local[*] 키는 제외
+        packages=(
+            'org.apache.hadoop:hadoop-aws:3.4.0,'
+            'com.amazonaws:aws-java-sdk-bundle:1.12.720'
+        ),
+        verbose=True,
+        pool='spark_cluster_pool',
+        execution_timeout=timedelta(minutes=10),
     )
 
     wait_for_bronze >> spark_transform_task

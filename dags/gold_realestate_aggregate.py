@@ -4,27 +4,15 @@ import sys
 
 from airflow import DAG
 from airflow.sensors.external_task import ExternalTaskSensor
-from airflow.operators.python import PythonOperator
-from airflow.hooks.base import BaseHook
 
-# Spark 미설치 환경에서도 DAG 파싱 및 인자 인식을 지원하는 Fallback Operator
 try:
     from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-except ImportError:
-    from airflow.models.baseoperator import BaseOperator
-    class SparkSubmitOperator(BaseOperator):
-        def __init__(self, task_id='spark_task', *args, **kwargs):
-            for spark_param in ['application', 'name', 'conn_id', 'conf', 'packages', 'verbose', 'files', 'py_files', 'archives']:
-                kwargs.pop(spark_param, None)
-            super().__init__(task_id=task_id, **kwargs)
-        def execute(self, context):
-            pass
+except Exception as e:
+    pass
 
-# PostgresHook 미설치 대비 fallback
-try:
-    from airflow.providers.postgres.hooks.postgres import PostgresHook
-except ImportError:
-    PostgresHook = None
+from airflow.operators.python import PythonOperator
+from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.sdk.bases.hook import BaseHook
 
 # JAVA_HOME 강제 설정
 if "JAVA_HOME" not in os.environ:
@@ -40,13 +28,17 @@ default_args = {
     'retry_delay': timedelta(minutes=5),
 }
 
-# 기본 Spark, 직렬화(Kryo), 드라이버 메모리 및 S3A 설정 (Spark 4 / S3 최적화)
+# 기본 Spark, 직렬화(Kryo), 드라이버 메모리 및 S3A/Parquet 호환 설정 (Spark 4.x / S3 최적화)
 spark_conf = {
     'spark.master': 'spark://spark-master:7077',
     'spark.serializer': 'org.apache.spark.serializer.KryoSerializer',
     'spark.kryoserializer.buffer.max': '512m',
     'spark.kryoserializer.buffer': '64m',
     'spark.driver.maxResultSize': '2g',
+    # Parquet Vectorized Reader / 호환성 예외 방지 (Spark 4 필수)
+    'spark.sql.parquet.enableVectorizedReader': 'false',
+    'spark.sql.parquet.writeLegacyFormat': 'true',
+    'spark.hadoop.parquet.hadoop.vectored.io.enabled':'false',
     # S3A 설정
     'spark.hadoop.fs.s3a.impl': 'org.apache.hadoop.fs.s3a.S3AFileSystem',
     'spark.hadoop.fs.s3a.aws.credentials.provider': 'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider',
@@ -70,10 +62,6 @@ except Exception as e:
 
 def validate_postgres_counts():
     """적재 후 검증 task: 5개 테이블의 row count > 0 확인"""
-    if PostgresHook is None:
-        print("PostgresHook not available; skipping validation logic.")
-        return
-
     hook = PostgresHook(postgres_conn_id='postgres_default')
     tables = [
         "gold_realestate_district_avg",
@@ -97,6 +85,7 @@ with DAG(
     end_date=datetime(2025, 1, 1),
     catchup=True,
     tags=['gold', 'realestate'],
+    max_active_runs=1,
 ) as dag:
 
     # ExternalTaskSensor: Silver DAG 완료 대기
@@ -110,19 +99,23 @@ with DAG(
         mode='reschedule'
     )
 
-    # SparkSubmitOperator: Spark 4.2.0 호환 Hadoop/AWS 및 PostgreSQL 드라이버 패키지 적용
+    # SparkSubmitOperator: Spark 4.2.0 호환 Hadoop/AWS SDK V2 및 PostgreSQL 드라이버 패키지 적용
     spark_gold_task = SparkSubmitOperator(
         task_id='spark_gold_aggregate',
         application='/opt/airflow/scripts/q3/gold_spark_sql.py',
         name='gold_realestate_aggregate',
         conn_id='spark_default',
         conf=spark_conf,
+        # Silver에서 검증된 AWS 패키지 유지 + JDBC 드라이버 안정화 버전
         packages=(
             'org.apache.hadoop:hadoop-aws:3.4.0,'
             'com.amazonaws:aws-java-sdk-bundle:1.12.720,'
-            'org.postgresql:postgresql:42.6.0'
+            'org.postgresql:postgresql:42.7.3'
         ),
-        verbose=True
+        pool='spark_cluster_pool',
+        do_xcom_push=False,
+        verbose=False,
+        execution_timeout=timedelta(minutes=10),
     )
 
     # 검증 Task: 각 테이블 row count > 0 확인

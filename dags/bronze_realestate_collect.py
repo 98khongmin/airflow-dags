@@ -14,7 +14,7 @@ from airflow.operators.python import (
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 
 
-MY_NAME = "kimhongmin"  # 본인 이름 입력
+MY_NAME = "kimhongmin"
 S3_BUCKET_NAME = f"realestate-{MY_NAME}"
 AWS_CONN_ID = "aws_default"
 
@@ -30,7 +30,6 @@ LAWD_CD_LIST = [
 
 
 def collect_and_upload_to_s3(lawd_cd: str, **context):
-    # 첫 줄 print 강제 출력
     print(f"collector={MY_NAME}, time={datetime.now()}, lawd={lawd_cd}")
 
     # execution_date 기준 처리 월 (yyyymm) 추출
