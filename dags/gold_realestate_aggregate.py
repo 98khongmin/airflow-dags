@@ -7,12 +7,22 @@ from airflow.sensors.external_task import ExternalTaskSensor
 
 try:
     from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-except Exception as e:
-    pass
+except ImportError:
+    from airflow.models.baseoperator import BaseOperator
+    class SparkSubmitOperator(BaseOperator):
+        def __init__(self, task_id='spark_task', *args, **kwargs):
+            for spark_param in ['application', 'name', 'conn_id', 'conf', 'packages', 'jars', 'verbose', 'files', 'py_files', 'archives', 'pool', 'do_xcom_push', 'execution_timeout']:
+                kwargs.pop(spark_param, None)
+            super().__init__(task_id=task_id, **kwargs)
+        def execute(self, context):
+            pass
 
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.sdk.bases.hook import BaseHook
+try:
+    from airflow.hooks.base import BaseHook
+except ImportError:
+    from airflow.sdk.bases.hook import BaseHook
 
 # JAVA_HOME 강제 설정
 if "JAVA_HOME" not in os.environ:

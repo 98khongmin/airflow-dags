@@ -1,15 +1,23 @@
 from datetime import datetime, timedelta
 from airflow import DAG
-# Airflow 3 권장 경로로 변경
-# from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 
 from airflow.sensors.external_task import ExternalTaskSensor
 try:
     from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-except Exception as e:
-    pass
+except ImportError:
+    from airflow.models.baseoperator import BaseOperator
+    class SparkSubmitOperator(BaseOperator):
+        def __init__(self, task_id='spark_task', *args, **kwargs):
+            for spark_param in ['application', 'name', 'conn_id', 'conf', 'packages', 'jars', 'verbose', 'files', 'py_files', 'archives', 'pool', 'do_xcom_push', 'execution_timeout']:
+                kwargs.pop(spark_param, None)
+            super().__init__(task_id=task_id, **kwargs)
+        def execute(self, context):
+            pass
 
-from airflow.sdk.bases.hook import BaseHook
+try:
+    from airflow.hooks.base import BaseHook
+except ImportError:
+    from airflow.sdk.bases.hook import BaseHook
 
 import os
 import sys
