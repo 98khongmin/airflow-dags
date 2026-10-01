@@ -24,7 +24,6 @@ try:
 except ImportError:
     from airflow.sdk.bases.hook import BaseHook
 
-# JAVA_HOME 강제 설정
 if "JAVA_HOME" not in os.environ:
     os.environ["JAVA_HOME"] = "/opt/java/openjdk"
 if "/opt/java/openjdk/bin" not in os.environ.get("PATH", ""):

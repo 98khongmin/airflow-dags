@@ -124,7 +124,7 @@ with DAG(
     dag_id="bronze_realestate_collect",
     schedule="@monthly",
     start_date=datetime(2024, 12, 1),
-    end_date=datetime(2025, 1, 1),  # 2024년 12월 1회차만 실행되도록 제한
+    end_date=datetime(2025, 1, 1),
     catchup=True,
     tags=["bronze", "realestate"],
 ) as dag:
